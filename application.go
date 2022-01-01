@@ -34,7 +34,7 @@ func (app *Application) Close() {
 }
 
 func (app *Application) Run() {
-	ticker := time.NewTicker(app.config.IntervalDuration)
+	ticker := time.NewTicker(app.config.Backup.Interval)
 
 	app.quit = make(chan os.Signal)
 
@@ -46,7 +46,7 @@ func (app *Application) Run() {
 		select {
 		case <-ticker.C:
 			if err := app.makeBackup(); err != nil {
-				log.Printf("[ERRR] %q\n\n", err)
+				log.Printf("[ERRR] %s\n\n", err.Error())
 				return
 			}
 
@@ -80,7 +80,7 @@ type backupArchive struct {
 
 func (app *Application) removeOldArchives() error {
 	var backupArchives []backupArchive
-	err := filepath.WalkDir(backupsDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(app.config.Directories.Backups, func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
 			return nil
 		}
@@ -103,11 +103,11 @@ func (app *Application) removeOldArchives() error {
 	if err != nil {
 		return err
 	}
-	if len(backupArchives) >= app.config.MaxBackupFiles {
+	if len(backupArchives) >= app.config.Backup.MaxBackupFiles {
 		sort.Slice(backupArchives, func(i, j int) bool {
 			return backupArchives[i].createdAt.After(backupArchives[j].createdAt)
 		})
-		for i := app.config.MaxBackupFiles; i < len(backupArchives); i++ {
+		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
 			if err := os.Remove(backupArchives[i].path); err != nil {
 				return err
 			}

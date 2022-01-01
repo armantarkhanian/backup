@@ -1,8 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -10,64 +10,84 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 var (
 	dumpDir          = "/tmp/dump"
-	backupsDir       = "/tmp/backups"
 	pythonScriptPath = "/tmp/backup.py"
 )
 
-type mysqlRouter struct {
-	Addr      string    `json:"addr"`
-	BasicAuth basicAuth `json:"basicAuth"`
+type directories struct {
+	Backups string `yaml:"backups"`
+	Logs    string `yaml:"logs"`
+}
+
+type cluster struct {
+	Name     string `yaml:"name"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+}
+
+type backup struct {
+	Interval       time.Duration `yaml:"interval"`
+	MaxBackupFiles int           `yaml:"max-backup-files"`
 }
 
 type basicAuth struct {
-	User     string `json:"user"`
-	Password string `json:"password"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
 }
 
 type Config struct {
-	BackupsDir     string      `json:"backupsDir"`
-	Log            string      `json:"logFile"`
-	ClusterName    string      `json:"clusterName"`
-	User           string      `json:"user"`
-	Password       string      `json:"password"`
-	MySQLRouter    mysqlRouter `json:"mysqlrouter"`
-	IntervalString string      `json:"interval"`
-	MaxBackupFiles int         `json:"maxBackupFiles"`
+	Directories          directories `yaml:"directories"`
+	Cluster              cluster     `yaml:"cluster"`
+	Backup               backup      `yaml:"backup"`
+	MySQLRouterHTTPHost  string      `yaml:"mysql-router-http-host"`
+	MySQLRouterBasicAuth basicAuth   `yaml:"mysql-router-basic-auth"`
 
-	Nodes             []node        `json:"-"`
-	roundRobinCounter int           `json:"-"`
-	IntervalDuration  time.Duration `json:"-"`
-	LogFile           *os.File      `json:"-"`
+	Nodes             []node   `yaml:"-"`
+	roundRobinCounter int      `yaml:"-"`
+	LogFile           *os.File `yaml:"-"`
 }
 
 func readConfig() (*Config, error) {
-	bytes, err := ioutil.ReadFile("config.json")
+	bytes, err := ioutil.ReadFile("config.yml")
 	if err != nil {
 		return nil, err
 	}
 	var c Config
-	if err = json.Unmarshal(bytes, &c); err != nil {
-		return nil, err
-	}
-	c.IntervalDuration, err = time.ParseDuration(c.IntervalString)
-	if err != nil {
+
+	if err = yaml.Unmarshal(bytes, &c); err != nil {
 		return nil, err
 	}
 
-	if c.Log != "" {
-		file, err := os.OpenFile(c.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if c.Directories.Logs != "" {
+		file, err := os.OpenFile(c.Directories.Logs, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
 		}
 		c.LogFile = file
 		log.SetOutput(c.LogFile)
 	}
-	if c.BackupsDir != "" {
-		backupsDir = c.BackupsDir
+	if c.Directories.Backups == "" {
+		return nil, errors.New("invalid config: directories.backups can not be empty string")
+	}
+	if c.Cluster.Name == "" {
+		return nil, errors.New("invalid config: cluster.name can not be empty string")
+	}
+	if c.Cluster.User == "" {
+		return nil, errors.New("invalid config: cluster.user can not be empty string")
+	}
+	if c.Backup.Interval == 0 {
+		return nil, errors.New("invalid config: backup.interval can not be zero")
+	}
+	if c.Backup.MaxBackupFiles == 0 {
+		return nil, errors.New("invalid config: backup.max-backup-files can not be zero")
+	}
+	if c.MySQLRouterHTTPHost == "" {
+		return nil, errors.New("invalid config: mysql-router-http-host can not be empty string")
 	}
 	return &c, nil
 }
@@ -82,24 +102,28 @@ func (n *node) String() string {
 }
 
 func (c *Config) updateNodes() error {
-	if !strings.HasPrefix(c.MySQLRouter.Addr, "http://") && !strings.HasPrefix(c.MySQLRouter.Addr, "https://") {
-		c.MySQLRouter.Addr = "http://" + c.MySQLRouter.Addr
+	if !strings.HasPrefix(c.MySQLRouterHTTPHost, "http://") && !strings.HasPrefix(c.MySQLRouterHTTPHost, "https://") {
+		c.MySQLRouterHTTPHost = "http://" + c.MySQLRouterHTTPHost
 	}
-	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/"+c.ClusterName+"_ro/destinations", nil)
+	req, err := http.NewRequest("GET", c.MySQLRouterHTTPHost+"/api/20190715/routes/"+c.Cluster.Name+"_ro/destinations", nil)
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(c.MySQLRouter.BasicAuth.User, c.MySQLRouter.BasicAuth.Password)
+	req.SetBasicAuth(c.MySQLRouterBasicAuth.User, c.MySQLRouterBasicAuth.Password)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	data, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf(`HTTP %v: %q`, resp.StatusCode, string(data))
+	}
 	type response struct {
 		Items []node `json:"items"`
 	}
 	var r response
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+	if err := yaml.Unmarshal(data, &r); err != nil {
 		return err
 	}
 	c.Nodes = []node{}

@@ -7,36 +7,12 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/walle/targz"
 )
-
-func (app *Application) makeBackup() error {
-	if err := app.clearDumpDirectory(); err != nil {
-		return err
-	}
-
-	if err := app.mysqlShellBackup(); err != nil {
-		return err
-	}
-
-	now := time.Now().UTC().Format("2006-01-02_15:04:05")
-	backupPath := backupsDir + "/" + now + ".tar.gz"
-	log.Printf("[INFO] Trying compress %q directory into .tar.gz archive\n", dumpDir)
-	if err := targz.Compress(dumpDir, backupPath); err != nil {
-		return err
-	}
-	log.Printf("[INFO] Succesfully created backup into %q.\n", backupPath)
-
-	log.Printf("[INFO] Trying remove old archives in %q directory\n", backupsDir)
-	if err := app.removeOldArchives(); err != nil {
-		return err
-	}
-	log.Printf("[INFO] Succesfully removed old archives.\n\n")
-	return nil
-}
 
 func main() {
 	c, err := readConfig()
@@ -52,6 +28,31 @@ func main() {
 	app.Run()
 }
 
+func (app *Application) makeBackup() error {
+	if err := app.clearDumpDirectory(); err != nil {
+		return err
+	}
+
+	if err := app.mysqlShellBackup(); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC().Format("2006-01-02_15:04:05")
+	backupPath := filepath.Join(app.config.Directories.Backups, now+".tar.gz")
+	log.Printf("[INFO] Trying compress %q directory into .tar.gz archive\n", dumpDir)
+	if err := targz.Compress(dumpDir, backupPath); err != nil {
+		return err
+	}
+	log.Printf("[INFO] Succesfully created backup into %q.\n", backupPath)
+
+	log.Printf("[INFO] Trying remove old archives in %q directory\n", app.config.Directories.Backups)
+	if err := app.removeOldArchives(); err != nil {
+		return err
+	}
+	log.Printf("[INFO] Succesfully removed old archives.\n\n")
+	return nil
+}
+
 func (app *Application) mysqlShellBackup() error {
 	log.Println("[INFO] Making MySQL Router REST API call (to get active cluster nodes)")
 	node, err := app.config.PickNode()
@@ -61,8 +62,8 @@ func (app *Application) mysqlShellBackup() error {
 	log.Printf("[INFO] Succesfully got active cluster nodes: %v.\n", app.config.Nodes)
 	data := TemplateData{
 		Host:          node,
-		User:          app.config.User,
-		Password:      app.config.Password,
+		User:          app.config.Cluster.User,
+		Password:      app.config.Cluster.Password,
 		DumpDirectory: dumpDir,
 	}
 	var buf bytes.Buffer
@@ -86,6 +87,7 @@ func (app *Application) mysqlShellBackup() error {
 	if err := cmd.Run(); err != nil {
 		output := strings.TrimSpace(outputBuffer.String())
 		if strings.Contains(output, "(111)") { // can't connect to MySQL server
+			log.Printf("[WARN] Instance %q is not available\n", node)
 			if app.config.roundRobinCounter == len(app.config.Nodes) {
 				// if all cluster nodes are unavailable, then return
 				return ErrNoAvailableNode

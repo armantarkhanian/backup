@@ -1,0 +1,18 @@
+directories:
+    backups: /home/arman/backups
+    logs:
+
+cluster:
+    name: myCluster
+    user: root
+    password:
+
+backup:
+    interval: 5s
+    max-backup-files: 10
+
+mysql-router-http-host: 127.0.0.1:8081
+
+mysql-router-basic-auth:
+    user: user
+    password: user
