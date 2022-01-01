@@ -1,10 +1,14 @@
 {
+	"clusterName": "myCluster",
+	"user": "user",
 	"password": "",
 	"interval": "10s",
 	"maxBackupFiles": 5,
-	"nodes": [
-		"127.0.0.1:3310",
-		"127.0.0.1:3320",
-		"127.0.0.1:3330"
-	]
+	"mysqlrouter": {
+		"addr": "127.0.0.1:8081",
+		"basicAuth": {
+			"user": "user",
+			"password": "user"
+		}
+	}
 }

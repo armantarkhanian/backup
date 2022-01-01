@@ -3,7 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -11,15 +15,30 @@ var (
 	dumpDir          = "/tmp/dump"
 	backupsDir       = "/home/arman/backups"
 	pythonScriptPath = "/tmp/backup.py"
+	endpoint         = "/api/20190715/routes/myCluster_ro/destinations"
 )
 
+type mysqlRouter struct {
+	Addr      string    `json:"addr"`
+	BasicAuth basicAuth `json:"basicAuth"`
+}
+
+type basicAuth struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
 type Config struct {
+	ClusterName    string      `json:"clusterName"`
+	User           string      `json:"user"`
+	Password       string      `json:"password"`
+	MySQLRouter    mysqlRouter `json:"mysqlrouter"`
+	IntervalString string      `json:"interval"`
+	MaxBackupFiles int         `json:"maxBackupFiles"`
+
+	Nodes             []node        `json:"-"`
 	roundRobinCounter int           `json:"-"`
 	IntervalDuration  time.Duration `json:"-"`
-	IntervalString    string        `json:"interval"`
-	MaxBackupFiles    int           `json:"maxBackupFiles"`
-	Password          string        `json:"password"`
-	Nodes             []string      `json:"nodes"`
 }
 
 func readConfig() (*Config, error) {
@@ -38,14 +57,49 @@ func readConfig() (*Config, error) {
 	return &c, nil
 }
 
+type node struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+}
+
+func (n *node) String() string {
+	return n.Address + ":" + strconv.Itoa(n.Port)
+}
+
+func (c *Config) updateNodes() {
+	if !strings.HasPrefix(c.MySQLRouter.Addr, "http://") && !strings.HasPrefix(c.MySQLRouter.Addr, "https://") {
+		c.MySQLRouter.Addr = "http://" + c.MySQLRouter.Addr
+	}
+	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/myCluster_ro/destinations", nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.SetBasicAuth(c.MySQLRouter.BasicAuth.User, c.MySQLRouter.BasicAuth.Password)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer resp.Body.Close()
+	type response struct {
+		Items []node `json:"items"`
+	}
+	var r response
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		fmt.Println(resp.StatusCode, err)
+		return
+	}
+	c.Nodes = []node{}
+	c.Nodes = append(c.Nodes, r.Items...)
+}
+
 var ErrNoAvailableNode = errors.New("all cluster nodes are unavailable")
 
 func (c *Config) PickNode() (string, error) {
-	if c.roundRobinCounter < 0 || c.roundRobinCounter >= len(c.Nodes) {
+	c.updateNodes()
+	if len(c.Nodes) == 0 {
 		return "", ErrNoAvailableNode
 	}
-
-	c.roundRobinCounter++
-
-	return c.Nodes[c.roundRobinCounter-1], nil
+	return c.Nodes[0].String(), nil
 }
