@@ -14,9 +14,8 @@ import (
 
 var (
 	dumpDir          = "/tmp/dump"
-	backupsDir       = "/home/arman/backups"
+	backupsDir       = "/tmp/backups"
 	pythonScriptPath = "/tmp/backup.py"
-	endpoint         = "/api/20190715/routes/myCluster_ro/destinations"
 )
 
 type mysqlRouter struct {
@@ -30,7 +29,8 @@ type basicAuth struct {
 }
 
 type Config struct {
-	Log            string      `json:"log"`
+	BackupsDir     string      `json:"backupsDir"`
+	Log            string      `json:"logFile"`
 	ClusterName    string      `json:"clusterName"`
 	User           string      `json:"user"`
 	Password       string      `json:"password"`
@@ -65,6 +65,9 @@ func readConfig() (*Config, error) {
 		}
 		c.LogFile = file
 		log.SetOutput(c.LogFile)
+	}
+	if c.BackupsDir != "" {
+		backupsDir = c.BackupsDir
 	}
 	return &c, nil
 }

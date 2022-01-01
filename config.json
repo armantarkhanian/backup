@@ -1,10 +1,11 @@
 {
-	"log": "./log",
+	"backupsDir": "/home/arman/backups",
+	"logFile": "./logs/log",
 	"clusterName": "myCluster",
-	"user": "user",
+	"user": "root",
 	"password": "",
 	"interval": "5s",
-	"maxBackupFiles": 5,
+	"maxBackupFiles": 10,
 	"mysqlrouter": {
 		"addr": "127.0.0.1:8081",
 		"basicAuth": {

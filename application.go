@@ -27,6 +27,12 @@ func NewApplication(c *Config) *Application {
 	}
 }
 
+func (app *Application) Close() {
+	if app.config.LogFile != nil {
+		app.config.LogFile.Close()
+	}
+}
+
 func (app *Application) Run() {
 	ticker := time.NewTicker(app.config.IntervalDuration)
 
@@ -39,12 +45,14 @@ func (app *Application) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			app.makeBackup()
+			if err := app.makeBackup(); err != nil {
+				log.Printf("[ERRR] %q\n\n", err)
+				return
+			}
 
 		case <-app.quit:
-			app.config.LogFile.Close()
-
 			log.Printf("[INFO] Gracefull shutdown.\n\n")
+			app.Close()
 			return
 		}
 	}
@@ -53,13 +61,11 @@ func (app *Application) Run() {
 func (app *Application) clearDumpDirectory() error {
 	log.Printf("[INFO] Trying delete %q directory.\n", dumpDir)
 	if err := os.RemoveAll(dumpDir); err != nil {
-		log.Println("[ERRR]", err)
 		return err
 	}
 	log.Printf("[INFO] Succesfully deleted %q directory.", dumpDir)
 	log.Printf("[INFO] Trying create %q directory.\n", dumpDir)
 	if err := os.MkdirAll(dumpDir, os.ModePerm); err != nil {
-		log.Println("[ERRR]", err)
 		return err
 	}
 	log.Printf("[INFO] Succesfully created %q directory.", dumpDir)
