@@ -70,7 +70,7 @@ func (c *Config) updateNodes() {
 	if !strings.HasPrefix(c.MySQLRouter.Addr, "http://") && !strings.HasPrefix(c.MySQLRouter.Addr, "https://") {
 		c.MySQLRouter.Addr = "http://" + c.MySQLRouter.Addr
 	}
-	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/myCluster_ro/destinations", nil)
+	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/"+c.ClusterName+"_ro/destinations", nil)
 	if err != nil {
 		log.Println("Error:", err)
 		return
