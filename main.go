@@ -47,12 +47,12 @@ func main() {
 }
 
 func (app *Application) mysqlShellBackup() error {
-	host, err := app.config.PickHost()
+	node, err := app.config.PickNode()
 	if err != nil {
 		return err
 	}
 	data := TemplateData{
-		Host:          host,
+		Host:          node,
 		Password:      app.config.Password,
 		DumpDirectory: dumpDir,
 	}
@@ -70,7 +70,7 @@ func (app *Application) mysqlShellBackup() error {
 	cmd.Stdout = &outputBuffer
 	cmd.Stderr = &outputBuffer
 
-	fmt.Println("Execute with", host)
+	fmt.Println("Execute with", node)
 
 	if err := cmd.Run(); err != nil {
 		output := strings.TrimSpace(outputBuffer.String())
@@ -83,6 +83,8 @@ func (app *Application) mysqlShellBackup() error {
 		}
 		return errors.New(output)
 	}
-	app.config.roundRobinCounter--
+
+	app.config.roundRobinCounter-- // stay at this node if it's available
+
 	return nil
 }

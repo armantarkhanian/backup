@@ -40,11 +40,12 @@ func readConfig() (*Config, error) {
 
 var ErrNoAvailableNode = errors.New("all cluster nodes are unavailable")
 
-func (c *Config) PickHost() (string, error) {
-	if len(c.Nodes) == 0 || c.roundRobinCounter == len(c.Nodes) {
+func (c *Config) PickNode() (string, error) {
+	if c.roundRobinCounter < 0 || c.roundRobinCounter >= len(c.Nodes) {
 		return "", ErrNoAvailableNode
 	}
-	host := c.Nodes[c.roundRobinCounter]
+
 	c.roundRobinCounter++
-	return host, nil
+
+	return c.Nodes[c.roundRobinCounter-1], nil
 }
