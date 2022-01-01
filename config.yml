@@ -1,6 +1,6 @@
 directories:
     backups: /home/arman/backups
-    logs:
+    logs: ./logs/
 
 cluster:
     name: myCluster

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -64,7 +65,18 @@ func readConfig() (*Config, error) {
 	}
 
 	if c.Directories.Logs != "" {
-		file, err := os.OpenFile(c.Directories.Logs, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		info, err := os.Stat(c.Directories.Logs)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("invalid config: %q is not directory", c.Directories.Logs)
+		}
+		if err := os.MkdirAll(c.Directories.Logs, os.ModePerm); err != nil {
+			return nil, err
+		}
+		logFile := filepath.Join(c.Directories.Logs, "log")
+		file, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
 		}
