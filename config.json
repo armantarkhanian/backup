@@ -2,7 +2,7 @@
 	"clusterName": "myCluster",
 	"user": "user",
 	"password": "",
-	"interval": "10s",
+	"interval": "5s",
 	"maxBackupFiles": 5,
 	"mysqlrouter": {
 		"addr": "127.0.0.1:8081",

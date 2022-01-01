@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -72,13 +72,13 @@ func (c *Config) updateNodes() {
 	}
 	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/myCluster_ro/destinations", nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Error:", err)
 		return
 	}
 	req.SetBasicAuth(c.MySQLRouter.BasicAuth.User, c.MySQLRouter.BasicAuth.Password)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Error:", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -87,17 +87,20 @@ func (c *Config) updateNodes() {
 	}
 	var r response
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		fmt.Println(resp.StatusCode, err)
+		log.Println("Error with status code:", resp.StatusCode, err)
 		return
 	}
 	c.Nodes = []node{}
 	c.Nodes = append(c.Nodes, r.Items...)
+	log.Println("Got node list:", c.Nodes)
 }
 
 var ErrNoAvailableNode = errors.New("all cluster nodes are unavailable")
 
 func (c *Config) PickNode() (string, error) {
+	log.Println("Started updating node list...")
 	c.updateNodes()
+	log.Println("Ended updating node list.")
 	if len(c.Nodes) == 0 {
 		return "", ErrNoAvailableNode
 	}

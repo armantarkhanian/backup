@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,32 +15,43 @@ import (
 )
 
 func (app *Application) makeBackup() {
+	log.Println("Started clear dumpDirectory...")
 	if err := app.clearDumpDirectory(); err != nil {
-		fmt.Println(err)
+		log.Println("Error:", err)
 		return
 	}
+	log.Println("Ended clear dumpDirectory")
 
+	log.Println("Started mysql-shell backup script...")
 	if err := app.mysqlShellBackup(); err != nil {
-		fmt.Println(err)
+		log.Println("Error:", err)
 		return
 	}
+	log.Println("Ended mysql-shell backup script")
 
 	now := time.Now().UTC().Format("2006-01-02_15:04:05")
 
+	log.Println("Started creating .tar.gz archive")
 	if err := targz.Compress(dumpDir, backupsDir+"/"+now+".tar.gz"); err != nil {
-		fmt.Println(err)
+		log.Println("Error:", err)
 		return
 	}
+	log.Println("Ended creating .tar.gz archive")
 
+	log.Println("Started removing old archives")
 	app.removeOldArchives()
+	log.Println("Ended removing old archives")
 }
 
 func main() {
+	log.Println("Started read config.json")
 	c, err := readConfig()
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Error:", err)
 		return
 	}
+	log.Println("Ended read config.json")
+	log.Println("-----------------------------------")
 
 	app := NewApplication(c)
 

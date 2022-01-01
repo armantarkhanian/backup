@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -40,9 +40,10 @@ func (app *Application) Run() {
 		select {
 		case <-ticker.C:
 			app.makeBackup()
+			log.Println("-----------------------------------")
 
 		case <-app.quit:
-			fmt.Println("Gracefull shutdown")
+			log.Println("Gracefull shutdown")
 			return
 		}
 	}
@@ -89,7 +90,7 @@ func (app *Application) removeOldArchives() {
 		})
 		for i := app.config.MaxBackupFiles; i < len(backupArchives); i++ {
 			if err := os.Remove(backupArchives[i].path); err != nil {
-				fmt.Println(err)
+				log.Println("Error:", err)
 			}
 		}
 	}
