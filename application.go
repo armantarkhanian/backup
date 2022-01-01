@@ -40,20 +40,30 @@ func (app *Application) Run() {
 		select {
 		case <-ticker.C:
 			app.makeBackup()
-			log.Println("-----------------------------------")
 
 		case <-app.quit:
-			log.Println("Gracefull shutdown")
+			app.config.LogFile.Close()
+
+			log.Printf("[INFO] Gracefull shutdown.\n\n")
 			return
 		}
 	}
 }
 
 func (app *Application) clearDumpDirectory() error {
+	log.Printf("[INFO] Trying delete %q directory.\n", dumpDir)
 	if err := os.RemoveAll(dumpDir); err != nil {
+		log.Println("[ERRR]", err)
 		return err
 	}
-	return os.MkdirAll(dumpDir, os.ModePerm)
+	log.Printf("[INFO] Succesfully deleted %q directory.", dumpDir)
+	log.Printf("[INFO] Trying create %q directory.\n", dumpDir)
+	if err := os.MkdirAll(dumpDir, os.ModePerm); err != nil {
+		log.Println("[ERRR]", err)
+		return err
+	}
+	log.Printf("[INFO] Succesfully created %q directory.", dumpDir)
+	return nil
 }
 
 type backupArchive struct {
@@ -62,9 +72,9 @@ type backupArchive struct {
 	createdAt time.Time
 }
 
-func (app *Application) removeOldArchives() {
+func (app *Application) removeOldArchives() error {
 	var backupArchives []backupArchive
-	filepath.WalkDir(backupsDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(backupsDir, func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
 			return nil
 		}
@@ -84,14 +94,18 @@ func (app *Application) removeOldArchives() {
 		})
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 	if len(backupArchives) >= app.config.MaxBackupFiles {
 		sort.Slice(backupArchives, func(i, j int) bool {
 			return backupArchives[i].createdAt.After(backupArchives[j].createdAt)
 		})
 		for i := app.config.MaxBackupFiles; i < len(backupArchives); i++ {
 			if err := os.Remove(backupArchives[i].path); err != nil {
-				log.Println("Error:", err)
+				return err
 			}
 		}
 	}
+	return nil
 }

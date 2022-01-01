@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -15,43 +14,39 @@ import (
 )
 
 func (app *Application) makeBackup() {
-	log.Println("Started clear dumpDirectory...")
 	if err := app.clearDumpDirectory(); err != nil {
-		log.Println("Error:", err)
 		return
 	}
-	log.Println("Ended clear dumpDirectory")
 
-	log.Println("Started mysql-shell backup script...")
 	if err := app.mysqlShellBackup(); err != nil {
-		log.Println("Error:", err)
+		log.Println("[ERRR]", err)
 		return
 	}
-	log.Println("Ended mysql-shell backup script")
 
 	now := time.Now().UTC().Format("2006-01-02_15:04:05")
-
-	log.Println("Started creating .tar.gz archive")
-	if err := targz.Compress(dumpDir, backupsDir+"/"+now+".tar.gz"); err != nil {
-		log.Println("Error:", err)
+	backupPath := backupsDir + "/" + now + ".tar.gz"
+	log.Printf("[INFO] Trying compress %q directory into .tar.gz archive\n", dumpDir)
+	if err := targz.Compress(dumpDir, backupPath); err != nil {
+		log.Println("[ERRR]", err)
 		return
 	}
-	log.Println("Ended creating .tar.gz archive")
+	log.Printf("[INFO] Succesfully created backup into %q.\n", backupPath)
 
-	log.Println("Started removing old archives")
-	app.removeOldArchives()
-	log.Println("Ended removing old archives")
+	log.Printf("[INFO] Trying remove old archives in %q directory\n", backupsDir)
+	if err := app.removeOldArchives(); err != nil {
+		log.Println("[WARN]", err)
+		return
+	}
+	log.Printf("[INFO] Succesfully removed old archives.\n\n")
 }
 
 func main() {
-	log.Println("Started read config.json")
 	c, err := readConfig()
 	if err != nil {
-		log.Println("Error:", err)
+		log.Println("[ERRR]", err)
 		return
 	}
-	log.Println("Ended read config.json")
-	log.Println("-----------------------------------")
+	log.Printf("[INFO] Succesfully read config file.\n\n")
 
 	app := NewApplication(c)
 
@@ -59,10 +54,12 @@ func main() {
 }
 
 func (app *Application) mysqlShellBackup() error {
+	log.Println("[INFO] Making MySQL Router REST API call (to get active cluster nodes)")
 	node, err := app.config.PickNode()
 	if err != nil {
 		return err
 	}
+	log.Printf("[INFO] Succesfully got active cluster nodes: %v.\n", app.config.Nodes)
 	data := TemplateData{
 		Host:          node,
 		Password:      app.config.Password,
@@ -72,9 +69,12 @@ func (app *Application) mysqlShellBackup() error {
 	if err := pythonScriptTemplate.Execute(&buf, &data); err != nil {
 		return err
 	}
+
+	log.Printf("[INFO] Trying write %q script file\n", pythonScriptPath)
 	if err = ioutil.WriteFile(pythonScriptPath, buf.Bytes(), os.ModePerm); err != nil {
 		return err
 	}
+	log.Printf("[INFO] Succesfully wrote %q script file.\n", pythonScriptPath)
 
 	cmd := exec.Command("mysqlsh", "--file", pythonScriptPath)
 
@@ -82,8 +82,7 @@ func (app *Application) mysqlShellBackup() error {
 	cmd.Stdout = &outputBuffer
 	cmd.Stderr = &outputBuffer
 
-	fmt.Println("Execute with", node)
-
+	log.Printf("[INFO] Trying make dump of %q instance\n", node)
 	if err := cmd.Run(); err != nil {
 		output := strings.TrimSpace(outputBuffer.String())
 		if strings.Contains(output, "(111)") { // can't connect to MySQL server
@@ -95,7 +94,7 @@ func (app *Application) mysqlShellBackup() error {
 		}
 		return errors.New(output)
 	}
-
+	log.Printf("[INFO] Succesfully dumped %q instance into %q directory.\n", node, dumpDir)
 	app.config.roundRobinCounter-- // stay at this node if it's available
 
 	return nil

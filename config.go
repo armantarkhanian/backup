@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ type basicAuth struct {
 }
 
 type Config struct {
+	Log            string      `json:"log"`
 	ClusterName    string      `json:"clusterName"`
 	User           string      `json:"user"`
 	Password       string      `json:"password"`
@@ -39,6 +41,7 @@ type Config struct {
 	Nodes             []node        `json:"-"`
 	roundRobinCounter int           `json:"-"`
 	IntervalDuration  time.Duration `json:"-"`
+	LogFile           *os.File      `json:"-"`
 }
 
 func readConfig() (*Config, error) {
@@ -54,6 +57,15 @@ func readConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if c.Log != "" {
+		file, err := os.OpenFile(c.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			return nil, err
+		}
+		c.LogFile = file
+		log.SetOutput(c.LogFile)
+	}
 	return &c, nil
 }
 
@@ -66,20 +78,18 @@ func (n *node) String() string {
 	return n.Address + ":" + strconv.Itoa(n.Port)
 }
 
-func (c *Config) updateNodes() {
+func (c *Config) updateNodes() error {
 	if !strings.HasPrefix(c.MySQLRouter.Addr, "http://") && !strings.HasPrefix(c.MySQLRouter.Addr, "https://") {
 		c.MySQLRouter.Addr = "http://" + c.MySQLRouter.Addr
 	}
 	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/"+c.ClusterName+"_ro/destinations", nil)
 	if err != nil {
-		log.Println("Error:", err)
-		return
+		return err
 	}
 	req.SetBasicAuth(c.MySQLRouter.BasicAuth.User, c.MySQLRouter.BasicAuth.Password)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Println("Error:", err)
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	type response struct {
@@ -87,20 +97,19 @@ func (c *Config) updateNodes() {
 	}
 	var r response
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		log.Println("Error with status code:", resp.StatusCode, err)
-		return
+		return err
 	}
 	c.Nodes = []node{}
 	c.Nodes = append(c.Nodes, r.Items...)
-	log.Println("Got node list:", c.Nodes)
+	return nil
 }
 
 var ErrNoAvailableNode = errors.New("all cluster nodes are unavailable")
 
 func (c *Config) PickNode() (string, error) {
-	log.Println("Started updating node list...")
-	c.updateNodes()
-	log.Println("Ended updating node list.")
+	if err := c.updateNodes(); err != nil {
+		return "", err
+	}
 	if len(c.Nodes) == 0 {
 		return "", ErrNoAvailableNode
 	}

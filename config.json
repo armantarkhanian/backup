@@ -1,4 +1,5 @@
 {
+	"log": "./log",
 	"clusterName": "myCluster",
 	"user": "user",
 	"password": "",
