@@ -4,15 +4,28 @@ directories:
 
 cluster:
     name: myCluster
-    user: root
-    password:
+    backup-user: root
+    backup-user-password:
 
 backup:
     interval: 5s
     max-backup-files: 10
 
-mysql-router-http-host: 127.0.0.1:8081
+mysqlrouter:
+    http-addr: 127.0.0.1:8081
 
-mysql-router-basic-auth:
-    user: user
-    password: user
+    basic-auth:
+        user: user
+        password: user
+
+alerts:
+    level: info
+    telegram:
+        bot-token: abracadabra
+        chat-id: 34324
+s3:
+    bucket: backups
+    endpoint: play.min.io
+    access-key-id: Q3AM3UQ867SPQQA43P2F
+    secret-access-key: zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG
+    use-ssl: false

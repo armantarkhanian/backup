@@ -2,11 +2,11 @@ module backup
 
 go 1.17
 
-require github.com/minio/minio-go/v7 v7.0.20
-
 require (
-	github.com/stretchr/testify v1.7.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+	github.com/minio/minio-go/v7 v7.0.20
+	github.com/walle/targz v0.0.0-20140417120357-57fe4206da5a
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
@@ -25,11 +25,9 @@ require (
 	github.com/rs/xid v1.2.1 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/smartystreets/assertions v1.2.1 // indirect
-	github.com/walle/targz v0.0.0-20140417120357-57fe4206da5a
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97 // indirect
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110 // indirect
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	golang.org/x/text v0.3.3 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0
 )

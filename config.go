@@ -20,15 +20,32 @@ var (
 	pythonScriptPath = "/tmp/backup.py"
 )
 
+type telegram struct {
+	BotToken string `yaml:"bot-token"`
+	ChatID   int64  `yaml:"chat-id"`
+}
+
+type alertLevel string
+
+const (
+	Info  alertLevel = "INFO"
+	Error alertLevel = "ERROR"
+)
+
+type alerts struct {
+	Level    alertLevel `yaml:"level"`
+	Telegram telegram   `yaml:"telegram"`
+}
+
 type directories struct {
 	Backups string `yaml:"backups"`
 	Logs    string `yaml:"logs"`
 }
 
 type cluster struct {
-	Name     string `yaml:"name"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
+	Name               string `yaml:"name"`
+	BackupUser         string `yaml:"backup-user"`
+	BackupUserPassword string `yaml:"backup-user-password"`
 }
 
 type backup struct {
@@ -36,21 +53,34 @@ type backup struct {
 	MaxBackupFiles int           `yaml:"max-backup-files"`
 }
 
+type mySQLRouter struct {
+	Addr      string    `yaml:"http-addr"`
+	BasicAuth basicAuth `yaml:"basic-auth"`
+}
+
 type basicAuth struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 }
 
-type Config struct {
-	Directories          directories `yaml:"directories"`
-	Cluster              cluster     `yaml:"cluster"`
-	Backup               backup      `yaml:"backup"`
-	MySQLRouterHTTPHost  string      `yaml:"mysql-router-http-host"`
-	MySQLRouterBasicAuth basicAuth   `yaml:"mysql-router-basic-auth"`
+type s3 struct {
+	Bucket          string `yaml:"bucket"`
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"access-key-id"`
+	SecretAccessKey string `yaml:"secret-access-key"`
+	UseSSL          bool   `yaml:"use-ssl"`
+}
 
-	Nodes             []node   `yaml:"-"`
-	roundRobinCounter int      `yaml:"-"`
-	LogFile           *os.File `yaml:"-"`
+type Config struct {
+	Directories       directories `yaml:"directories"`
+	Cluster           cluster     `yaml:"cluster"`
+	Backup            backup      `yaml:"backup"`
+	MySQLRouter       mySQLRouter `yaml:"mysqlrouter"`
+	Alerts            alerts      `yaml:"alerts"`
+	S3                s3          `yaml:"s3"`
+	Nodes             []node      `yaml:"-"`
+	roundRobinCounter int         `yaml:"-"`
+	LogFile           *os.File    `yaml:"-"`
 }
 
 func readConfig() (*Config, error) {
@@ -89,7 +119,7 @@ func readConfig() (*Config, error) {
 	if c.Cluster.Name == "" {
 		return nil, errors.New("invalid config: cluster.name can not be empty string")
 	}
-	if c.Cluster.User == "" {
+	if c.Cluster.BackupUser == "" {
 		return nil, errors.New("invalid config: cluster.user can not be empty string")
 	}
 	if c.Backup.Interval == 0 {
@@ -98,9 +128,16 @@ func readConfig() (*Config, error) {
 	if c.Backup.MaxBackupFiles == 0 {
 		return nil, errors.New("invalid config: backup.max-backup-files can not be zero")
 	}
-	if c.MySQLRouterHTTPHost == "" {
+	if c.MySQLRouter.Addr == "" {
 		return nil, errors.New("invalid config: mysql-router-http-host can not be empty string")
 	}
+
+	c.Alerts.Level = alertLevel(strings.ToUpper(string(c.Alerts.Level)))
+
+	if c.Alerts.Level != Info && c.Alerts.Level != Error {
+		return nil, errors.New("invalid config: alerts.level can be info or error")
+	}
+
 	return &c, nil
 }
 
@@ -114,14 +151,15 @@ func (n *node) String() string {
 }
 
 func (c *Config) updateNodes() error {
-	if !strings.HasPrefix(c.MySQLRouterHTTPHost, "http://") && !strings.HasPrefix(c.MySQLRouterHTTPHost, "https://") {
-		c.MySQLRouterHTTPHost = "http://" + c.MySQLRouterHTTPHost
+	if !strings.HasPrefix(c.MySQLRouter.Addr, "http://") && !strings.HasPrefix(c.MySQLRouter.Addr, "https://") {
+		c.MySQLRouter.Addr = "http://" + c.MySQLRouter.Addr
 	}
-	req, err := http.NewRequest("GET", c.MySQLRouterHTTPHost+"/api/20190715/routes/"+c.Cluster.Name+"_ro/destinations", nil)
+	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/"+c.Cluster.Name+"_ro/destinations", nil)
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth(c.MySQLRouterBasicAuth.User, c.MySQLRouterBasicAuth.Password)
+
+	req.SetBasicAuth(c.MySQLRouter.BasicAuth.User, c.MySQLRouter.BasicAuth.Password)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

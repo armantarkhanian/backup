@@ -11,20 +11,45 @@ import (
 	"syscall"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type Application struct {
 	config      *Config
 	minioClient *minio.Client
-
-	quit chan os.Signal
+	telegramBot *tgbotapi.BotAPI
+	quit        chan os.Signal
 }
 
-func NewApplication(c *Config) *Application {
-	return &Application{
-		config: c,
+func (app *Application) SendTelegram(message string) error {
+	msg := tgbotapi.NewMessage(app.config.Alerts.Telegram.ChatID, message)
+	msg.ParseMode = "markdown"
+	_, err := app.telegramBot.Send(msg)
+	return err
+}
+
+func NewApplication(c *Config) (*Application, error) {
+	minioClient, err := minio.New(c.S3.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(c.S3.AccessKeyID, c.S3.SecretAccessKey, ""),
+		Secure: c.S3.UseSSL,
+	})
+	if err != nil {
+		return nil, err
 	}
+	bot, err := tgbotapi.NewBotAPI(c.Alerts.Telegram.BotToken)
+	if err != nil {
+		return nil, err
+	}
+
+	bot.Debug = false
+
+	return &Application{
+		config:      c,
+		minioClient: minioClient,
+		telegramBot: bot,
+	}, nil
 }
 
 func (app *Application) Close() {

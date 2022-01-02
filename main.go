@@ -20,11 +20,15 @@ func main() {
 		log.Println("[ERRR]", err)
 		return
 	}
-	log.Printf("[INFO] Succesfully read config file.\n\n")
-
-	app := NewApplication(c)
+	log.Printf("[INFO] Succesfully read config file.\n")
+	log.Printf("[INFO] Trying initialize application\n")
+	app, err := NewApplication(c)
+	if err != nil {
+		log.Println("[ERRR]", err)
+		return
+	}
 	defer app.Close()
-
+	log.Printf("[INFO] Succesfully initialized application.\n")
 	app.Run()
 }
 
@@ -62,8 +66,8 @@ func (app *Application) mysqlShellBackup() error {
 	log.Printf("[INFO] Succesfully got active cluster nodes: %v.\n", app.config.Nodes)
 	data := TemplateData{
 		Host:          node,
-		User:          app.config.Cluster.User,
-		Password:      app.config.Cluster.Password,
+		User:          app.config.Cluster.BackupUser,
+		Password:      app.config.Cluster.BackupUserPassword,
 		DumpDirectory: dumpDir,
 	}
 	var buf bytes.Buffer
