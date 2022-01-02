@@ -181,7 +181,7 @@ func (app *Application) removeLocal() error {
 		sort.Slice(backupArchives, func(i, j int) bool {
 			return backupArchives[i].createdAt.After(backupArchives[j].createdAt)
 		})
-		for i := app.config.Backup.MaxBackupFiles - 1; i < len(backupArchives); i++ {
+		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
 			if err := os.Remove(backupArchives[i].path); err != nil {
 				return err
 			}
@@ -206,7 +206,7 @@ func (app *Application) removeFromS3() error {
 		sort.Slice(backupArchives, func(i, j int) bool {
 			return backupArchives[i].LastModified.After(backupArchives[j].LastModified)
 		})
-		for i := app.config.Backup.MaxBackupFiles - 1; i < len(backupArchives); i++ {
+		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
 			if err := app.minioClient.RemoveObject(
 				context.Background(),
 				app.config.S3.Bucket,
