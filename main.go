@@ -40,7 +40,7 @@ func (app *Application) makeBackup() error {
 		return err
 	}
 
-	now := time.Now().UTC().Format("2006-01-02_15_04_05")
+	now := time.Now().UTC().Format("2006-01-02_15-04-05")
 	backupPath := filepath.Join(app.config.Directories.Backups, now+".tar.gz")
 	log.Printf("INFO Compressing %q directory into .tar.gz archive\n", dumpDir)
 	if err := targz.Compress(dumpDir, backupPath); err != nil {
