@@ -1,29 +1,31 @@
+# EXAMPLE CONFIG FILE
 directories:
-    backups: /tmp/backups
-    logs:
+    backups: /tmp/backups/
+    logs: /tmp/logs/ # if not setted, then STDOUT will used
 
 cluster:
-    name: myCluster
-    backup-user: root
-    backup-user-password:
+    name: myCluster            # InnoDB Cluster name
+    backup-user: root          # mysql user 
+    backup-user-password: pass # mysql password
 
 backup:
-    interval: 1m
-    max-backup-files: 3
+    interval: 1h        # how often make backup (Golang duration format: 15s, 15m, 24h and etc.)
+    max-backup-files: 3 # keep only 3 last backups
 
 mysqlrouter:
-    http-addr: 127.0.0.1:8081
+    http-addr: 127.0.0.1:8081 # MySQL Router HTTP address (for REST API calls)
 
-    basic-auth:
+    basic-auth: # HTTP Basic Auth credentials for MySQL Router REST
         user: user
         password: user
 
 alerts:
-    level: info
+    level: info # info, error
     telegram:
-        turn: off
-        bot-token: 5019212361:AAHm4iiZh1AYWC7yBza-PpWRfDtWm17SzU4
-        chat-id: 145073956
+        turn: on
+        bot-token: <TELEGRAM_BOT_TOKEN>
+        chat-id: <TELEGRAM_CHAT_ID>
+        
 s3:
     bucket: innodb-backups
     endpoint: play.min.io
