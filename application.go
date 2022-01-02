@@ -130,12 +130,13 @@ func (app *Application) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			err := app.makeBackup()
+			filename, err := app.makeBackup()
 			if err != nil {
 				log.Printf("ERRR %s\n", err.Error())
 				app.Alert(fmt.Sprintf("ERROR %s", err.Error()), "")
 			} else {
-				app.Alert("Succes", "")
+				log.Printf("INFO Created %q\n", filename)
+				app.Alert(filename, "")
 			}
 			log.Writer().Write([]byte("\n"))
 
@@ -176,7 +177,7 @@ func (app *Application) removeLocal() error {
 			return nil
 		}
 
-		t, err := time.Parse("2006-01-02_15-04-05", strings.TrimSuffix(name, ".tar.gz"))
+		t, err := time.Parse(timeFormat, strings.TrimSuffix(name, ".tar.gz"))
 		if err != nil {
 			return nil
 		}

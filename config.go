@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	timeFormat       = "2006-01-02_15-04-05"
 	dumpDir          = "/tmp/dump"
 	pythonScriptPath = "/tmp/backup.py"
 )

@@ -31,31 +31,31 @@ func main() {
 	app.Run()
 }
 
-func (app *Application) makeBackup() error {
+func (app *Application) makeBackup() (string, error) {
 	if err := app.clearDumpDirectory(); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := app.mysqlShellBackup(); err != nil {
-		return err
+		return "", err
 	}
 
-	now := time.Now().UTC().Format("2006-01-02_15-04-05")
+	now := time.Now().UTC().Format(timeFormat)
 	backupPath := filepath.Join(app.config.Directories.Backups, now+".tar.gz")
 	log.Printf("INFO Compressing %q directory into .tar.gz archive\n", dumpDir)
 	if err := targz.Compress(dumpDir, backupPath); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := app.UploadToS3(backupPath); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := app.removeOldArchives(); err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return filepath.Base(backupPath), nil
 }
 
 func (app *Application) mysqlShellBackup() error {
