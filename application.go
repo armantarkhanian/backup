@@ -176,7 +176,7 @@ func (app *Application) removeLocal() error {
 			return nil
 		}
 
-		t, err := time.Parse("2006-01-02_15:04:05", strings.TrimSuffix(name, ".tar.gz"))
+		t, err := time.Parse("2006-01-02_15-04-05", strings.TrimSuffix(name, ".tar.gz"))
 		if err != nil {
 			return nil
 		}
