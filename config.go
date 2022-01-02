@@ -21,6 +21,7 @@ var (
 )
 
 type telegram struct {
+	Turn     bool   `yaml:"turn"`
 	BotToken string `yaml:"bot-token"`
 	ChatID   int64  `yaml:"chat-id"`
 }

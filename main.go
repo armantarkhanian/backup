@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -28,7 +29,7 @@ func main() {
 		return
 	}
 	defer app.Close()
-	log.Printf("[INFO] Succesfully initialized application.\n")
+	log.Printf("[INFO] Succesfully initialized application.\n\n")
 	app.Run()
 }
 
@@ -53,7 +54,23 @@ func (app *Application) makeBackup() error {
 	if err := app.removeOldArchives(); err != nil {
 		return err
 	}
-	log.Printf("[INFO] Succesfully removed old archives.\n\n")
+	log.Printf("[INFO] Succesfully removed old archives.\n")
+
+	log.Println("[INFO] Trying to upload backup file into S3 Storage")
+	if err := app.UploadToS3(backupPath); err != nil {
+		return err
+	}
+	s := fmt.Sprintf("[INFO] Succesfully uploaded %q into s3.", filepath.Base(backupPath))
+	log.Println(s)
+
+	if app.config.Alerts.Telegram.Turn {
+		log.Println("[INFO] Trying to send alert to telegram")
+		if err := app.SendTelegram(s, ""); err != nil {
+			log.Println("[ERRR]", err)
+		} else {
+			log.Println("[INFO] Succesfully sended alert to telegram.")
+		}
+	}
 	return nil
 }
 

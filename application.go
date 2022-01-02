@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"io/fs"
 	"log"
 	"os"
@@ -23,10 +25,47 @@ type Application struct {
 	quit        chan os.Signal
 }
 
-func (app *Application) SendTelegram(message string) error {
+var (
+	ErrNilTelegramBot = errors.New("telegram bot is nil")
+	ErrNilMinioClient = errors.New("minio client is nil")
+)
+
+func (app *Application) SendTelegram(message string, parseMode string) error {
+	if app.telegramBot == nil {
+		return ErrNilTelegramBot
+	}
 	msg := tgbotapi.NewMessage(app.config.Alerts.Telegram.ChatID, message)
-	msg.ParseMode = "markdown"
+	if parseMode != "" {
+		msg.ParseMode = parseMode
+	}
 	_, err := app.telegramBot.Send(msg)
+	return err
+}
+
+func (app *Application) UploadToS3(path string) error {
+	if app.minioClient == nil {
+		return ErrNilMinioClient
+	}
+	log.Printf("[INFO] Cheking if %q bucket exists", app.config.S3.Bucket)
+	bucketExists, err := app.minioClient.BucketExists(context.Background(), app.config.S3.Bucket)
+	if err != nil {
+		return err
+	}
+	if !bucketExists {
+		log.Printf("[INFO] Bucket %q doesn't exists. Trying create it.", app.config.S3.Bucket)
+		if err := app.minioClient.MakeBucket(context.Background(), app.config.S3.Bucket, minio.MakeBucketOptions{}); err != nil {
+			return err
+		}
+		log.Printf("[INFO] Successfully created %q bucket.", app.config.S3.Bucket)
+	}
+	_, err = app.minioClient.FPutObject(
+		context.Background(),
+		app.config.S3.Bucket,
+		filepath.Base(path),
+		path,
+		minio.PutObjectOptions{},
+	)
+
 	return err
 }
 
@@ -70,10 +109,12 @@ func (app *Application) Run() {
 	for {
 		select {
 		case <-ticker.C:
+			log.Println("[INFO] Trying make backup")
 			if err := app.makeBackup(); err != nil {
 				log.Printf("[ERRR] %s\n\n", err.Error())
 				return
 			}
+			log.Printf("[INFO] Success!\n\n")
 
 		case <-app.quit:
 			log.Printf("[INFO] Gracefull shutdown.\n\n")
@@ -103,7 +144,7 @@ type backupArchive struct {
 	createdAt time.Time
 }
 
-func (app *Application) removeOldArchives() error {
+func (app *Application) removeLocal() error {
 	var backupArchives []backupArchive
 	err := filepath.WalkDir(app.config.Directories.Backups, func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
@@ -137,6 +178,46 @@ func (app *Application) removeOldArchives() error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+func (app *Application) removeFromS3() error {
+	if app.minioClient == nil {
+		return ErrNilMinioClient
+	}
+	var backupArchives []minio.ObjectInfo
+	for object := range app.minioClient.ListObjects(
+		context.Background(),
+		app.config.S3.Bucket,
+		minio.ListObjectsOptions{},
+	) {
+		backupArchives = append(backupArchives, object)
+	}
+	if len(backupArchives) >= app.config.Backup.MaxBackupFiles {
+		sort.Slice(backupArchives, func(i, j int) bool {
+			return backupArchives[i].LastModified.After(backupArchives[j].LastModified)
+		})
+		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
+			if err := app.minioClient.RemoveObject(
+				context.Background(),
+				app.config.S3.Bucket,
+				backupArchives[i].Key,
+				minio.RemoveObjectOptions{},
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (app *Application) removeOldArchives() error {
+	if err := app.removeLocal(); err != nil {
+		return err
+	}
+	if err := app.removeFromS3(); err != nil {
+		return err
 	}
 	return nil
 }
