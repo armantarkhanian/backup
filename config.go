@@ -94,7 +94,9 @@ func readConfig() (*Config, error) {
 	if err = yaml.Unmarshal(bytes, &c); err != nil {
 		return nil, err
 	}
-
+	if c.Backup.MaxBackupFiles < 1 {
+		return nil, errors.New("invalid config: backup.max-backup-files can not be less than 1")
+	}
 	if c.Directories.Logs != "" {
 		if err := os.MkdirAll(c.Directories.Logs, os.ModePerm); err != nil {
 			return nil, err
