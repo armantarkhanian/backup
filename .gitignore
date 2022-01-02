@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-
+config.yml
 backup
 log
 # Test binary, built with `go test -c`
