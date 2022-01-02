@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -48,19 +49,27 @@ func (app *Application) UploadToS3(path string) error {
 		return ErrNilMinioClient
 	}
 	log.Printf("INFO Cheking if %q bucket exists", app.config.S3.Bucket)
-	bucketExists, err := app.minioClient.BucketExists(context.Background(), app.config.S3.Bucket)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	bucketExists, err := app.minioClient.BucketExists(ctx, app.config.S3.Bucket)
 	if err != nil {
 		return err
 	}
 	if !bucketExists {
 		log.Printf("INFO Creating bucket %q.", app.config.S3.Bucket)
-		if err := app.minioClient.MakeBucket(context.Background(), app.config.S3.Bucket, minio.MakeBucketOptions{}); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := app.minioClient.MakeBucket(ctx, app.config.S3.Bucket, minio.MakeBucketOptions{}); err != nil {
 			return err
 		}
 	}
+	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 	log.Println("INFO Uploading backup file into S3 Storage")
 	_, err = app.minioClient.FPutObject(
-		context.Background(),
+		ctx,
 		app.config.S3.Bucket,
 		filepath.Base(path),
 		path,
@@ -78,7 +87,9 @@ func NewApplication(c *Config) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	bot, err := tgbotapi.NewBotAPI(c.Alerts.Telegram.BotToken)
+	bot, err := tgbotapi.NewBotAPIWithClient(c.Alerts.Telegram.BotToken, tgbotapi.APIEndpoint, &http.Client{
+		Timeout: 10 * time.Second,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -119,11 +130,13 @@ func (app *Application) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := app.makeBackup(); err != nil {
+			err := app.makeBackup()
+			if err != nil {
+				log.Printf("ERRR %s\n", err.Error())
 				app.Alert(fmt.Sprintf("ERROR %s", err.Error()), "")
-				log.Printf("ERRR %s\n\n", err.Error())
+			} else {
+				app.Alert("Succes", "")
 			}
-			app.Alert("Succes", "")
 			log.Writer().Write([]byte("\n"))
 
 		case <-app.quit:
@@ -195,8 +208,10 @@ func (app *Application) removeFromS3() error {
 		return ErrNilMinioClient
 	}
 	var backupArchives []minio.ObjectInfo
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 	for object := range app.minioClient.ListObjects(
-		context.Background(),
+		ctx,
 		app.config.S3.Bucket,
 		minio.ListObjectsOptions{},
 	) {
@@ -207,8 +222,10 @@ func (app *Application) removeFromS3() error {
 			return backupArchives[i].LastModified.After(backupArchives[j].LastModified)
 		})
 		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 			if err := app.minioClient.RemoveObject(
-				context.Background(),
+				ctx,
 				app.config.S3.Bucket,
 				backupArchives[i].Key,
 				minio.RemoveObjectOptions{},
