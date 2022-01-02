@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,18 +17,17 @@ import (
 func main() {
 	c, err := readConfig()
 	if err != nil {
-		log.Println("[ERRR]", err)
+		log.Println("ERRR", err)
 		return
 	}
-	log.Printf("[INFO] Succesfully read config file.\n")
-	log.Printf("[INFO] Trying initialize application\n")
+	log.Printf("INFO Initializing application\n")
 	app, err := NewApplication(c)
 	if err != nil {
-		log.Println("[ERRR]", err)
+		log.Println("ERRR", err)
 		return
 	}
 	defer app.Close()
-	log.Printf("[INFO] Succesfully initialized application.\n\n")
+	log.Writer().Write([]byte("\n"))
 	app.Run()
 }
 
@@ -44,43 +42,28 @@ func (app *Application) makeBackup() error {
 
 	now := time.Now().UTC().Format("2006-01-02_15:04:05")
 	backupPath := filepath.Join(app.config.Directories.Backups, now+".tar.gz")
-	log.Printf("[INFO] Trying compress %q directory into .tar.gz archive\n", dumpDir)
+	log.Printf("INFO Compressing %q directory into .tar.gz archive\n", dumpDir)
 	if err := targz.Compress(dumpDir, backupPath); err != nil {
 		return err
 	}
-	log.Printf("[INFO] Succesfully created backup into %q.\n", backupPath)
 
-	log.Printf("[INFO] Trying remove old archives in %q directory\n", app.config.Directories.Backups)
-	if err := app.removeOldArchives(); err != nil {
-		return err
-	}
-	log.Printf("[INFO] Succesfully removed old archives.\n")
-
-	log.Println("[INFO] Trying to upload backup file into S3 Storage")
 	if err := app.UploadToS3(backupPath); err != nil {
 		return err
 	}
-	s := fmt.Sprintf("[INFO] Succesfully uploaded %q into s3.", filepath.Base(backupPath))
-	log.Println(s)
 
-	if app.config.Alerts.Telegram.Turn {
-		log.Println("[INFO] Trying to send alert to telegram")
-		if err := app.SendTelegram(s, ""); err != nil {
-			log.Println("[ERRR]", err)
-		} else {
-			log.Println("[INFO] Succesfully sended alert to telegram.")
-		}
+	if err := app.removeOldArchives(); err != nil {
+		return err
 	}
+
 	return nil
 }
 
 func (app *Application) mysqlShellBackup() error {
-	log.Println("[INFO] Making MySQL Router REST API call (to get active cluster nodes)")
-	node, err := app.config.PickNode()
+	log.Println("INFO Getting active cluster nodes from MySQL Router REST API")
+	node, err := app.PickNode()
 	if err != nil {
 		return err
 	}
-	log.Printf("[INFO] Succesfully got active cluster nodes: %v.\n", app.config.Nodes)
 	data := TemplateData{
 		Host:          node,
 		User:          app.config.Cluster.BackupUser,
@@ -92,11 +75,10 @@ func (app *Application) mysqlShellBackup() error {
 		return err
 	}
 
-	log.Printf("[INFO] Trying write %q script file\n", pythonScriptPath)
+	log.Printf("INFO Writing %q script file\n", pythonScriptPath)
 	if err = ioutil.WriteFile(pythonScriptPath, buf.Bytes(), os.ModePerm); err != nil {
 		return err
 	}
-	log.Printf("[INFO] Succesfully wrote %q script file.\n", pythonScriptPath)
 
 	cmd := exec.Command("mysqlsh", "--file", pythonScriptPath)
 
@@ -104,7 +86,7 @@ func (app *Application) mysqlShellBackup() error {
 	cmd.Stdout = &outputBuffer
 	cmd.Stderr = &outputBuffer
 
-	log.Printf("[INFO] Trying make dump of %q instance\n", node)
+	log.Printf("INFO Making dump of %q instance\n", node)
 	if err := cmd.Run(); err != nil {
 		output := strings.TrimSpace(outputBuffer.String())
 		if strings.Contains(output, "(111)") { // can't connect to MySQL server
@@ -117,7 +99,6 @@ func (app *Application) mysqlShellBackup() error {
 		}
 		return errors.New(output)
 	}
-	log.Printf("[INFO] Succesfully dumped %q instance into %q directory.\n", node, dumpDir)
 	app.config.roundRobinCounter-- // stay at this node if it's available
 
 	return nil

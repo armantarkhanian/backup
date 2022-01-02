@@ -96,15 +96,15 @@ func readConfig() (*Config, error) {
 	}
 
 	if c.Directories.Logs != "" {
+		if err := os.MkdirAll(c.Directories.Logs, os.ModePerm); err != nil {
+			return nil, err
+		}
 		info, err := os.Stat(c.Directories.Logs)
 		if err != nil {
 			return nil, err
 		}
 		if !info.IsDir() {
 			return nil, fmt.Errorf("invalid config: %q is not directory", c.Directories.Logs)
-		}
-		if err := os.MkdirAll(c.Directories.Logs, os.ModePerm); err != nil {
-			return nil, err
 		}
 		logFile := filepath.Join(c.Directories.Logs, "log")
 		file, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -117,6 +117,18 @@ func readConfig() (*Config, error) {
 	if c.Directories.Backups == "" {
 		return nil, errors.New("invalid config: directories.backups can not be empty string")
 	}
+
+	if err := os.MkdirAll(c.Directories.Backups, os.ModePerm); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(c.Directories.Backups)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("invalid config: %q is not directory", c.Directories.Backups)
+	}
+
 	if c.Cluster.Name == "" {
 		return nil, errors.New("invalid config: cluster.name can not be empty string")
 	}
@@ -151,16 +163,16 @@ func (n *node) String() string {
 	return n.Address + ":" + strconv.Itoa(n.Port)
 }
 
-func (c *Config) updateNodes() error {
-	if !strings.HasPrefix(c.MySQLRouter.Addr, "http://") && !strings.HasPrefix(c.MySQLRouter.Addr, "https://") {
-		c.MySQLRouter.Addr = "http://" + c.MySQLRouter.Addr
+func (app *Application) updateNodes() error {
+	if !strings.HasPrefix(app.config.MySQLRouter.Addr, "http://") && !strings.HasPrefix(app.config.MySQLRouter.Addr, "https://") {
+		app.config.MySQLRouter.Addr = "http://" + app.config.MySQLRouter.Addr
 	}
-	req, err := http.NewRequest("GET", c.MySQLRouter.Addr+"/api/20190715/routes/"+c.Cluster.Name+"_ro/destinations", nil)
+	req, err := http.NewRequest("GET", app.config.MySQLRouter.Addr+"/api/20190715/routes/"+app.config.Cluster.Name+"_ro/destinations", nil)
 	if err != nil {
 		return err
 	}
 
-	req.SetBasicAuth(c.MySQLRouter.BasicAuth.User, c.MySQLRouter.BasicAuth.Password)
+	req.SetBasicAuth(app.config.MySQLRouter.BasicAuth.User, app.config.MySQLRouter.BasicAuth.Password)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -177,19 +189,19 @@ func (c *Config) updateNodes() error {
 	if err := yaml.Unmarshal(data, &r); err != nil {
 		return err
 	}
-	c.Nodes = []node{}
-	c.Nodes = append(c.Nodes, r.Items...)
+	app.config.Nodes = []node{}
+	app.config.Nodes = append(app.config.Nodes, r.Items...)
 	return nil
 }
 
 var ErrNoAvailableNode = errors.New("all cluster nodes are unavailable")
 
-func (c *Config) PickNode() (string, error) {
-	if err := c.updateNodes(); err != nil {
+func (app *Application) PickNode() (string, error) {
+	if err := app.updateNodes(); err != nil {
 		return "", err
 	}
-	if len(c.Nodes) == 0 {
+	if len(app.config.Nodes) == 0 {
 		return "", ErrNoAvailableNode
 	}
-	return c.Nodes[0].String(), nil
+	return app.config.Nodes[0].String(), nil
 }

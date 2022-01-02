@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -46,18 +47,18 @@ func (app *Application) UploadToS3(path string) error {
 	if app.minioClient == nil {
 		return ErrNilMinioClient
 	}
-	log.Printf("[INFO] Cheking if %q bucket exists", app.config.S3.Bucket)
+	log.Printf("INFO Cheking if %q bucket exists", app.config.S3.Bucket)
 	bucketExists, err := app.minioClient.BucketExists(context.Background(), app.config.S3.Bucket)
 	if err != nil {
 		return err
 	}
 	if !bucketExists {
-		log.Printf("[INFO] Bucket %q doesn't exists. Trying create it.", app.config.S3.Bucket)
+		log.Printf("INFO Creating bucket %q.", app.config.S3.Bucket)
 		if err := app.minioClient.MakeBucket(context.Background(), app.config.S3.Bucket, minio.MakeBucketOptions{}); err != nil {
 			return err
 		}
-		log.Printf("[INFO] Successfully created %q bucket.", app.config.S3.Bucket)
 	}
+	log.Println("INFO Uploading backup file into S3 Storage")
 	_, err = app.minioClient.FPutObject(
 		context.Background(),
 		app.config.S3.Bucket,
@@ -97,6 +98,15 @@ func (app *Application) Close() {
 	}
 }
 
+func (app *Application) Alert(message string, telegramParseMode string) {
+	if app.config.Alerts.Telegram.Turn {
+		log.Println("INFO Sending telegram alert")
+		if err := app.SendTelegram(message, telegramParseMode); err != nil {
+			log.Println("ERRR", err)
+		}
+	}
+}
+
 func (app *Application) Run() {
 	ticker := time.NewTicker(app.config.Backup.Interval)
 
@@ -109,15 +119,15 @@ func (app *Application) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			log.Println("[INFO] Trying make backup")
 			if err := app.makeBackup(); err != nil {
-				log.Printf("[ERRR] %s\n\n", err.Error())
-				return
+				app.Alert(fmt.Sprintf("ERROR %s", err.Error()), "")
+				log.Printf("ERRR %s\n\n", err.Error())
 			}
-			log.Printf("[INFO] Success!\n\n")
+			app.Alert("Succes", "")
+			log.Writer().Write([]byte("\n"))
 
 		case <-app.quit:
-			log.Printf("[INFO] Gracefull shutdown.\n\n")
+			log.Printf("INFO Gracefull shutdown.\n\n")
 			app.Close()
 			return
 		}
@@ -125,16 +135,14 @@ func (app *Application) Run() {
 }
 
 func (app *Application) clearDumpDirectory() error {
-	log.Printf("[INFO] Trying delete %q directory.\n", dumpDir)
+	log.Printf("INFO Removing %q directory.\n", dumpDir)
 	if err := os.RemoveAll(dumpDir); err != nil {
 		return err
 	}
-	log.Printf("[INFO] Succesfully deleted %q directory.", dumpDir)
-	log.Printf("[INFO] Trying create %q directory.\n", dumpDir)
+	log.Printf("INFO Creating %q directory.\n", dumpDir)
 	if err := os.MkdirAll(dumpDir, os.ModePerm); err != nil {
 		return err
 	}
-	log.Printf("[INFO] Succesfully created %q directory.", dumpDir)
 	return nil
 }
 
@@ -169,11 +177,11 @@ func (app *Application) removeLocal() error {
 	if err != nil {
 		return err
 	}
-	if len(backupArchives) >= app.config.Backup.MaxBackupFiles {
+	if len(backupArchives) > app.config.Backup.MaxBackupFiles {
 		sort.Slice(backupArchives, func(i, j int) bool {
 			return backupArchives[i].createdAt.After(backupArchives[j].createdAt)
 		})
-		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
+		for i := app.config.Backup.MaxBackupFiles - 1; i < len(backupArchives); i++ {
 			if err := os.Remove(backupArchives[i].path); err != nil {
 				return err
 			}
@@ -194,11 +202,11 @@ func (app *Application) removeFromS3() error {
 	) {
 		backupArchives = append(backupArchives, object)
 	}
-	if len(backupArchives) >= app.config.Backup.MaxBackupFiles {
+	if len(backupArchives) > app.config.Backup.MaxBackupFiles {
 		sort.Slice(backupArchives, func(i, j int) bool {
 			return backupArchives[i].LastModified.After(backupArchives[j].LastModified)
 		})
-		for i := app.config.Backup.MaxBackupFiles; i < len(backupArchives); i++ {
+		for i := app.config.Backup.MaxBackupFiles - 1; i < len(backupArchives); i++ {
 			if err := app.minioClient.RemoveObject(
 				context.Background(),
 				app.config.S3.Bucket,
@@ -213,9 +221,11 @@ func (app *Application) removeFromS3() error {
 }
 
 func (app *Application) removeOldArchives() error {
+	log.Println("INFO Removing old backups from local")
 	if err := app.removeLocal(); err != nil {
 		return err
 	}
+	log.Println("INFO Removing old backups from S3 Storage")
 	if err := app.removeFromS3(); err != nil {
 		return err
 	}
